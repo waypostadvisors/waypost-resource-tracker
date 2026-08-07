@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Waypost Resource Tracker</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.0/dist/chart.umd.js" integrity="sha384-iU8HYtnGQ8Cy4zl7gbNMOhsDTTKX02BTXptVP/vqAWIaTfM7isw76iyZCsjL2eVi" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    color-scheme: light;
+    --charcoal:#333f48; --ink:#2a333a; --red:#9b2743; --smoke:#E3E5E6; --bone:#f2f5f5; --paper:#fff;
+    --muted:#6b757c;
+    --g-fill:#EAF3DE; --g-bd:#97C459; --a-fill:#FAEEDA; --a-bd:#EF9F27;
+    --r-fill:#FCEBEB; --r-bd:#E24B4A; --z-fill:#F1EFE8; --z-bd:#D3D1C7;
+    --u-fill:#EFEAF7; --u-bd:#7C5CCB;
+    --won:#378ADD; --cr:#7C5CCB; --prop:#EF9F27;
+    --serif:Georgia,"Times New Roman",serif;
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bone);color:var(--charcoal);font-family:var(--sans);font-size:14px;line-height:1.45}
+  h1,h2,h3{font-family:var(--serif);margin:0}
+  .wrap{max-width:1340px;margin:0 auto;padding:18px 24px 64px}
+  header.top{display:flex;align-items:center;gap:14px;padding:4px 0 14px;border-bottom:3px solid var(--charcoal)}
+  .logo{display:flex;align-items:center;gap:10px}
+  .hex{width:32px;height:36px;display:block}
+  .brandname{font-family:var(--serif);font-weight:700;letter-spacing:.14em;font-size:18px}
+  .brandtag{font-size:8.5px;letter-spacing:.22em;color:var(--red);font-weight:800}
+  header.top h1{font-size:19px;margin-left:auto;font-weight:700}
+  .asof{font-size:11px;color:var(--muted);margin-left:10px;text-align:right}
+  .asof .sync-ok{color:#5a8a2e;font-weight:700}
+  .asof .sync-warn{color:var(--r-bd);font-weight:700}
+
+
+  .controls{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:18px 0 4px}
+  .seg{display:inline-flex;border:1px solid var(--smoke);border-radius:9px;overflow:hidden;background:#fff;box-shadow:0 1px 2px rgba(51,63,72,.05)}
+  .seg button{border:0;background:#fff;padding:8px 15px;font-family:inherit;font-size:13px;font-weight:600;color:var(--charcoal);cursor:pointer;display:flex;align-items:center;gap:6px}
+  .seg button.active{background:var(--charcoal);color:#fff}
+  .seg.role button.active{background:var(--red)}
+  .seg.views button.active{background:var(--red)}
+  select,.btn{font-family:inherit;font-size:13px;font-weight:600;padding:8px 12px;border:1px solid var(--smoke);border-radius:9px;background:#fff;color:var(--charcoal);cursor:pointer}
+  .btn.toggle.on{background:var(--red);color:#fff;border-color:var(--red)}
+  .btn:disabled{opacity:.4;cursor:not-allowed}
+  .spacer{flex:1}
+  .hint{font-size:12px;color:var(--muted)}
+  .panelcard{background:#fff;border:1px solid var(--smoke);border-radius:12px;margin-top:10px;box-shadow:0 1px 3px rgba(51,63,72,.06);overflow:hidden}
+  .ph{display:flex;align-items:center;gap:10px;padding:13px 18px;border-bottom:1px solid var(--bone)}
+  .ph h2{font-size:16px;font-weight:700}
+  .ph .sub{font-size:12px;color:var(--muted);margin-left:auto}
+
+  .tl{display:grid;grid-template-columns:300px 1fr}
+  .tl-corner{border-bottom:1px solid var(--smoke);padding:8px 14px;font-size:11px;font-weight:800;color:var(--muted);letter-spacing:.04em;text-transform:uppercase}
+  .tl-months{position:relative;height:34px;border-bottom:1px solid var(--smoke)}
+  .tl-mon{position:absolute;top:0;height:100%;border-left:1px solid var(--smoke);font-size:11px;font-weight:800;color:var(--ink);padding:9px 0 0 7px;white-space:nowrap;overflow:hidden}
+  .tl-label{border-bottom:1px solid var(--bone);padding:7px 14px;display:flex;flex-direction:column;gap:1px;min-width:0;cursor:pointer}
+  .tl-label:hover{background:var(--bone)}
+  .tl-label .c{font-weight:700;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .tl-label .m{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .tl-track{position:relative;border-bottom:1px solid var(--bone);height:46px}
+  .tl-grid{position:absolute;top:0;bottom:0;border-left:1px solid #f0eee7}
+  .tl-bar{position:absolute;top:11px;height:24px;border-radius:6px;display:flex;align-items:center;padding:0 8px;color:#fff;font-size:11px;font-weight:700;white-space:nowrap;overflow:hidden;cursor:pointer;box-shadow:0 1px 2px rgba(0,0,0,.15)}
+  .tl-bar:hover{filter:brightness(1.06);box-shadow:0 2px 6px rgba(0,0,0,.25)}
+  .tl-bar.nodates{background:repeating-linear-gradient(45deg,#c7ccd1,#c7ccd1 6px,#b3bac0 6px,#b3bac0 12px)!important;color:#39424a}
+  .tl-today{position:absolute;top:0;bottom:0;width:2px;background:var(--red);z-index:5}
+  .tl-today .lab{position:absolute;top:-1px;left:3px;font-size:9px;font-weight:800;color:var(--red);background:#fff;padding:0 3px;border-radius:3px}
+  .issue-flag{color:var(--r-bd);font-weight:800;cursor:help}
+
+  .pl-row{display:grid;grid-template-columns:190px 84px 1fr 130px;gap:12px;align-items:center;padding:9px 18px;border-bottom:1px solid var(--bone)}
+  .pl-row.head{font-size:11px;font-weight:800;color:var(--muted);letter-spacing:.04em;text-transform:uppercase;border-bottom:1px solid var(--smoke)}
+  .pl-name{font-weight:700}
+  .pl-name small{display:block;font-weight:500;color:var(--muted);font-size:11px}
+  .cap-tag{display:inline-block;font-size:9.5px;font-weight:800;color:var(--muted);border:1px solid var(--smoke);border-radius:4px;padding:0 4px;margin-left:5px;vertical-align:1px}
+  .util{display:flex;align-items:center;gap:8px}
+  .util .bar{flex:1;height:8px;border-radius:5px;background:var(--smoke);overflow:hidden}
+  .util .fill{height:100%;border-radius:5px}
+  .util .pct{font-size:12px;font-weight:800;width:42px;text-align:right}
+  .spark{display:flex;gap:2px;height:26px;align-items:flex-end}
+  .spark .b{flex:1;border-radius:2px 2px 0 0;min-height:2px}
+  .freecell{font-size:12px;font-weight:600}
+  .freecell.soon{color:var(--g-bd)} .freecell.now{color:var(--g-bd)} .freecell.book{color:var(--muted)}
+
+  .scrollx{overflow-x:auto}
+  table{border-collapse:separate;border-spacing:0;width:100%}
+  th,td{font-size:12px;white-space:nowrap}
+  thead th{background:var(--charcoal);color:#fff;font-weight:600;padding:7px 8px;text-align:center;position:sticky;top:0;z-index:3}
+  thead th.mon{font-size:10px;color:#cfd6da;font-weight:800}
+  .fix{position:sticky;left:0;background:#fff;text-align:left;padding:7px 10px;border-bottom:1px solid var(--smoke);z-index:2}
+  thead .fix{background:var(--charcoal);color:#fff;z-index:4}
+  .c-client{left:0;min-width:135px;font-weight:700}
+  .c-sow{left:135px;min-width:175px;color:#55606a;font-weight:500;white-space:normal}
+  .c-adv{left:310px;min-width:118px}
+  .c-am{left:428px;min-width:50px;text-align:center}
+  .c-stage{left:478px;min-width:114px}
+  tbody td{border-bottom:1px solid var(--bone)}
+  .wk{width:44px;min-width:44px;height:30px;text-align:center;border-left:1px solid #fff;font-weight:600;color:#3a444c;position:relative}
+  body.editing .wk{width:50px;min-width:50px}
+  .dot{position:absolute;top:3px;right:4px;width:6px;height:6px;border-radius:50%;background:var(--r-bd);cursor:pointer}
+  .wk input{width:42px;border:1px solid var(--a-bd);border-radius:4px;font-family:inherit;font-size:12px;font-weight:600;text-align:center;padding:2px 0;background:#fff;color:var(--charcoal)}
+  .totrow td{background:var(--smoke);font-weight:800;border-top:2px solid var(--charcoal)}
+  .totrow .wk{color:var(--charcoal)}
+  .monsep{border-left:2px solid var(--charcoal)!important}
+  .adv-unassigned{color:var(--u-bd);font-weight:800;font-style:italic}
+
+  .pill{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10px;font-weight:800}
+  .pill.won{background:#e3eefb;color:#1f5e9e} .pill.cr{background:#ece6f8;color:#5a3fa0} .pill.prop{background:#fdeede;color:#c4631a}
+  .legend{display:flex;gap:16px;flex-wrap:wrap;align-items:center;padding:11px 18px;font-size:12px;color:#55606a;border-top:1px solid var(--bone)}
+  .sw{display:inline-block;width:14px;height:14px;border-radius:3px;vertical-align:-2px;margin-right:5px;border:1px solid}
+  .chartwrap{position:relative;height:300px;padding:16px 18px}
+  .drill{margin:0 18px 16px;border-top:1px dashed var(--smoke);padding-top:12px;display:none}
+  .drill h3{font-size:15px;margin-bottom:8px}
+  .drill .close{float:right;cursor:pointer;color:var(--muted);font-weight:800;font-size:16px;border:0;background:none}
+  .stagehdr{margin:10px 0 2px}
+  .drow{display:grid;grid-template-columns:135px 1fr 120px 46px 46px;gap:8px;padding:5px 0;border-bottom:1px solid var(--bone);font-size:12px}
+  .drow.head{font-weight:800;color:var(--muted);border-bottom:1px solid var(--smoke)}
+
+  .flyout{position:fixed;top:0;right:0;width:380px;max-width:92vw;height:100%;background:#fff;box-shadow:-6px 0 24px rgba(0,0,0,.18);transform:translateX(100%);transition:transform .22s ease;z-index:50;padding:22px;overflow-y:auto}
+  .flyout.open{transform:translateX(0)}
+  .flyout .x{position:absolute;top:14px;right:16px;border:0;background:none;font-size:20px;font-weight:800;color:var(--muted);cursor:pointer}
+  .flyout .ftag{font-size:10.5px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:var(--red)}
+  .flyout h3{font-size:20px;margin:6px 0 2px}
+  .frow{display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--bone);font-size:13px}
+  .frow span:first-child{color:var(--muted)}
+  .issue-item{padding:8px 10px;border:1px solid var(--r-bd);background:var(--r-fill);border-radius:8px;margin-bottom:8px;font-size:12.5px}
+  .issue-item b{display:block;margin-bottom:2px}
+  .backdrop{position:fixed;inset:0;background:rgba(42,51,58,.28);opacity:0;pointer-events:none;transition:opacity .2s;z-index:49}
+  .backdrop.open{opacity:1;pointer-events:auto}
+  .banner{display:flex;gap:8px;align-items:flex-start;background:#eef2f6;border:1px solid var(--smoke);border-radius:9px;padding:9px 12px;margin-top:14px;font-size:12.5px;color:#4a555d}
+  .banner.warn{background:var(--r-fill);border-color:var(--r-bd)}
+  .banner b{color:var(--charcoal)}
+  .banner .x{margin-left:auto;cursor:pointer;font-weight:800;color:var(--muted);border:0;background:none;font-size:15px}
+  .banner .linky{color:var(--red);font-weight:700;cursor:pointer;text-decoration:underline}
+  .loading{padding:60px;text-align:center;color:var(--muted);font-size:15px}
+  .foot{margin-top:30px;font-size:11px;color:#97a0a7;text-align:center;border-top:1px solid var(--smoke);padding-top:14px}
+  .savedtick{position:fixed;bottom:18px;right:18px;background:var(--charcoal);color:#fff;padding:9px 16px;border-radius:9px;font-size:13px;font-weight:600;opacity:0;transition:opacity .3s;z-index:60}
+  .savedtick.show{opacity:1}
+
+  .authgate{position:fixed;inset:0;background:var(--bone);display:flex;align-items:center;justify-content:center;z-index:100}
+  .authcard{background:#fff;border:1px solid var(--smoke);border-radius:14px;box-shadow:0 4px 18px rgba(51,63,72,.1);padding:34px 38px;max-width:380px;text-align:center}
+  .authcard .hex{width:40px;height:44px;margin:0 auto 14px}
+  .authcard h2{font-size:19px;margin-bottom:6px}
+  .authcard p{color:var(--muted);font-size:13px;margin:0 0 20px}
+  .authbtn{display:inline-flex;align-items:center;gap:9px;background:var(--charcoal);color:#fff;border:0;border-radius:9px;padding:11px 20px;font-family:inherit;font-size:13.5px;font-weight:700;cursor:pointer}
+  .authbtn:hover{background:#242c32}
+  .authbtn:disabled{opacity:.5;cursor:not-allowed}
+  .authmsg{margin-top:16px;font-size:12.5px;color:var(--muted)}
+  .authmsg.denied{color:var(--r-bd);font-weight:600}
+  #whoami{font-size:11px;color:var(--muted);margin-left:12px}
+  #whoami a{color:var(--red);text-decoration:none;font-weight:700;cursor:pointer}
+</style>
+</head>
+<body>
+<div class="authgate" id="authgate">
+  <div class="authcard">
+    <svg class="hex" viewBox="0 0 818.5 893.6"><g><polygon fill="#9b2743" points="409.6 0 199.5 119.9 200.1 485.6 409.6 342.7 409.6 0"/><polygon fill="#9b2743" points="409.6 722.4 223 844.8 308 893.6 409.6 829.6 409.6 722.4"/><polygon fill="#9b2743" points="409.6 462.6 98 677.8 97.2 178.5 0 233.9 0 716.5 133.7 793.7 409.6 604.8 409.6 462.6"/></g><g><polygon fill="#5a0716" points="408.8 0 619 119.9 618.4 485.6 408.8 342.7 408.8 0"/><polygon fill="#5a0716" points="408.8 722.4 595.4 844.8 510.5 893.6 408.8 829.6 408.8 722.4"/><polygon fill="#5a0716" points="408.8 462.6 720.5 677.8 721.3 178.5 818.5 233.9 818.5 716.5 684.8 793.7 408.8 604.8 408.8 462.6"/></g></svg>
+    <h2>Waypost Resource Tracker</h2>
+    <p>Sign in with your GitHub account to view the dashboard.</p>
+    <button class="authbtn" id="ghSignIn">⏵ Sign in with GitHub</button>
+    <div class="authmsg" id="authmsg"></div>
+  </div>
+</div>
+<div class="wrap" id="wrap" style="display:none">
+  <header class="top">
+    <div class="logo">
+      <svg class="hex" viewBox="0 0 818.5 893.6"><g><polygon fill="#9b2743" points="409.6 0 199.5 119.9 200.1 485.6 409.6 342.7 409.6 0"/><polygon fill="#9b2743" points="409.6 722.4 223 844.8 308 893.6 409.6 829.6 409.6 722.4"/><polygon fill="#9b2743" points="409.6 462.6 98 677.8 97.2 178.5 0 233.9 0 716.5 133.7 793.7 409.6 604.8 409.6 462.6"/></g><g><polygon fill="#5a0716" points="408.8 0 619 119.9 618.4 485.6 408.8 342.7 408.8 0"/><polygon fill="#5a0716" points="408.8 722.4 595.4 844.8 510.5 893.6 408.8 829.6 408.8 722.4"/><polygon fill="#5a0716" points="408.8 462.6 720.5 677.8 721.3 178.5 818.5 233.9 818.5 716.5 684.8 793.7 408.8 604.8 408.8 462.6"/></g></svg>
+      <div><div class="brandname">WAYPOST</div><div class="brandtag">SUPPLY CHAIN SPECIALISTS</div></div>
+    </div>
+    <h1>Resource Tracker</h1>
+    <span class="asof" id="asof"></span>
+    <span id="whoami"></span>
+  </header>
+
+  <div id="issuebanner"></div>
+
+  <div class="controls">
+    <div class="seg views" id="views">
+      <button data-v="timeline" class="active">▭ Timeline</button>
+      <button data-v="people">◉ People</button>
+      <button data-v="pipeline">▮ Pipeline</button>
+      <button data-v="grid">▦ Grid</button>
+    </div>
+    <div class="seg" id="horizon">
+      <button data-h="13">3 mo</button>
+      <button data-h="26" class="active">6 mo</button>
+      <button data-h="ye">Year end</button>
+    </div>
+    <select id="fAM"><option value="">All AMs</option></select>
+    <select id="fStage"><option value="">All stages</option><option value="Closed Won">Active Projects</option><option>Contract Review</option><option>Proposal</option></select>
+    <div class="spacer"></div>
+    <div class="seg role" id="role"><button data-r="admin" class="active">Admin</button><button data-r="viewer">Viewer</button></div>
+    <button class="btn toggle" id="editBtn" style="display:none">✎ Edit</button>
+  </div>
+
+  <div id="view"><div class="loading">Loading live data…</div></div>
+
+  <div class="foot">Waypost Advisors · Resource Tracker · Live data synced daily from HubSpot</div>
+</div>
+
+<div class="backdrop" id="backdrop" onclick="closeFly()"></div>
+<aside class="flyout" id="flyout"></aside>
+<div class="savedtick" id="savedtick">Saved ✓</div>
+
+<script>
+/* ===== Supabase config — anon key only identifies the project; real access requires
+   a signed-in, allow-listed GitHub identity (enforced by RLS on the resource_tracker schema) ===== */
+const SB_URL="https://enojrhmixzzzuuoagdjd.supabase.co";
+const SB_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVub2pyaG1peHp6enV1b2FnZGpkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjgwNDMyMTUsImV4cCI6MjA4MzYxOTIxNX0.THvRnk10rmkd0RGEuvTWNIiDer9S98x7pI1zOcSxRzQ";
+const sb=supabase.createClient(SB_URL,SB_KEY);
+async function authHeader(){
+  const {data:{session}}=await sb.auth.getSession();
+  return session?.access_token||SB_KEY;
+}
+async function sbGet(path){
+  const token=await authHeader();
+  const r=await fetch(`${SB_URL}/rest/v1/${path}`,{headers:{apikey:SB_KEY,Authorization:`Bearer ${token}`}});
+  if(!r.ok)throw new Error(`${path}: ${r.status} ${await r.text()}`);
+  return r.json();
+}
+async function sbPatch(path,body){
+  const token=await authHeader();
+  const r=await fetch(`${SB_URL}/rest/v1/${path}`,{method:"PATCH",headers:{apikey:SB_KEY,Authorization:`Bearer ${token}`,"Content-Type":"application/json",Prefer:"return=minimal"},body:JSON.stringify(body)});
+  if(!r.ok)throw new Error(`PATCH ${path}: ${r.status} ${await r.text()}`);
+}
+async function amIAllowed(){
+  const token=await authHeader();
+  const r=await fetch(`${SB_URL}/rest/v1/rpc/am_i_allowed`,{method:"POST",headers:{apikey:SB_KEY,Authorization:`Bearer ${token}`,"Content-Type":"application/json"}});
+  if(!r.ok)return false;
+  return await r.json();
+}
+
+/* ===== State ===== */
+const STAGE_ORDER=["Closed Won","Contract Review","Proposal"];
+const SC={"Closed Won":"#378ADD","Contract Review":"#7C5CCB","Proposal":"#EF9F27"};
+const PILL={"Closed Won":"won","Contract Review":"cr","Proposal":"prop"};
+const STAGE_LABEL={"Closed Won":"Active Projects","Contract Review":"Contract Review","Proposal":"Proposal"};
+const MONTHS=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const UNASSIGNED="⚠ Unassigned";
+let HORIZON=localStorage.getItem("wrt_h")||"26", VIEW="timeline", EDIT=false, ROLE=localStorage.getItem("wrt_role")||"admin";
+let ADVISORS=[], DEALS=[], ROWS=[], ALLOC={}, CAPMAP={}, LASTSYNC=null;
+
+function monday(d){d=new Date(d);const day=(d.getDay()+6)%7;d.setDate(d.getDate()-day);d.setHours(0,0,0,0);return d;}
+function addDays(d,n){const x=new Date(d);x.setDate(x.getDate()+n);return x;}
+const TODAY=new Date();
+const START=monday(TODAY);
+let WEEKS=[], WEND=START, SPANDAYS=1;
+function buildWeeks(h){
+  let n; if(h==="ye"){const ye=new Date(TODAY.getFullYear(),11,28);n=Math.max(4,Math.round((monday(ye)-START)/6048e5)+1);}else{n=parseInt(h,10);}
+  const out=[];for(let i=0;i<n;i++){const ws=addDays(START,i*7);const we=addDays(ws,6);
+    out.push({ws,we,iso:ws.toISOString().slice(0,10),md:(ws.getMonth()+1)+"/"+ws.getDate(),mdEnd:(we.getMonth()+1)+"/"+we.getDate(),mon:MONTHS[ws.getMonth()],firstOfMonth:ws.getDate()<=7});}
+  WEEKS=out; WEND=addDays(START,n*7); SPANDAYS=(WEND-START)/864e5; return out;
+}
+function pctX(d){d=new Date(d);return Math.max(0,Math.min(100,((d-START)/864e5)/SPANDAYS*100));}
+const n2=v=>Math.round(v*100)/100;
+
+/* ===== Load & shape data ===== */
+async function loadData(){
+  const [advisors,deals,allocs,dadvs,projects,synclog]=await Promise.all([
+    sbGet("rt_advisors?select=*&order=name"),
+    sbGet("rt_deals?select=*&order=client"),
+    sbGet("rt_allocations?select=*"),
+    sbGet("rt_deal_advisors?select=*"),
+    sbGet("rt_projects?select=*"),
+    sbGet("rt_sync_log?select=ran_at,status,message&order=ran_at.desc&limit=1")
+  ]);
+  ADVISORS=advisors; DEALS=deals; LASTSYNC=synclog[0]||null;
+  CAPMAP={}; advisors.forEach(a=>{CAPMAP[a.id]={name:a.name,emp:a.employment_type||'',active:a.is_active,cap:+a.weekly_capacity_hours||0};});
+  const dealById={}; deals.forEach(d=>dealById[d.id]=d);
+  const DAMAP={}; dadvs.forEach(x=>{DAMAP[x.deal_id+"|"+(x.advisor_id||"none")+"|"+(x.slot||0)]=x;});
+  // a Deal with a linked HubSpot Project uses the Project's dates/status; a Project marked
+  // completed means the delivery work is done even if the Deal is still "Closed Won"
+  const projectByDealId={}; projects.forEach(p=>{if(p.deal_id)projectByDealId[p.deal_id]=p;});
+  // rows = one per (deal, advisor-or-null, slot) that has allocations
+  const rowKey={};
+  ROWS=[]; ALLOC={};
+  allocs.forEach(al=>{
+    const d=dealById[al.deal_id]; if(!d)return;
+    const proj=projectByDealId[d.id];
+    if(proj&&proj.status==='completed')return;
+    const advName=al.advisor_id?(CAPMAP[al.advisor_id]?CAPMAP[al.advisor_id].name:"Unknown"):UNASSIGNED;
+    const k=al.deal_id+"|"+(al.advisor_id||"none")+"|"+(al.slot||0);
+    if(rowKey[k]===undefined){
+      rowKey[k]=ROWS.length;
+      const da=DAMAP[k]||{};
+      ROWS.push({client:d.client,sow:d.sow,adv:advName,advId:al.advisor_id,am:(d.deal_owner||"—").split(" ")[0],stage:d.stage,
+        start:da.start_date||(proj&&proj.start_date)||d.start_date,end:da.end_date||(proj&&proj.end_date)||d.end_date,
+        rate:da.bill_rate?+da.bill_rate:null,dealId:d.id,issues:[...(d.data_issues||[]),...(proj&&proj.data_issues||[])],
+        status:proj?proj.status:null});
+    }
+    ALLOC[rowKey[k]+"|"+al.week_start]={hours:+al.hours,ov:al.is_override,note:al.note,id:al.id};
+  });
+  // deals with no advisor slot filled yet still get a row so they're visible (unassigned)
+  deals.forEach(d=>{
+    const proj=projectByDealId[d.id];
+    if(proj&&proj.status==='completed')return;
+    if(!ROWS.some(r=>r.dealId===d.id)){
+      ROWS.push({client:d.client,sow:d.sow,adv:UNASSIGNED,advId:null,am:(d.deal_owner||"—").split(" ")[0],stage:d.stage,
+        start:(proj&&proj.start_date)||d.start_date,end:(proj&&proj.end_date)||d.end_date,dealId:d.id,
+        issues:[...(d.data_issues||[]),...(proj&&proj.data_issues||[])],
+        status:proj?proj.status:null,nodates:!((proj&&proj.start_date)||d.start_date)});
+    }
+  });
+}
+function hoursFor(i,iso){const a=ALLOC[i+"|"+iso];return a?a.hours:0;}
+function ovFor(i,iso){const a=ALLOC[i+"|"+iso];return a&&a.ov?a:null;}
+const FILL={z:"#F1EFE8",u:"#EFEAF7",won:"#e3eefb",cr:"#ece6f8",prop:"#fdeede"},BD={z:"#D3D1C7",u:"#7C5CCB",won:"#378ADD",cr:"#7C5CCB",prop:"#EF9F27"};
+function filtered(){const am=fAM.value,st=fStage.value;const todayISO=`${TODAY.getFullYear()}-${String(TODAY.getMonth()+1).padStart(2,'0')}-${String(TODAY.getDate()).padStart(2,'0')}`;return ROWS.map((e,i)=>({e,i})).filter(({e})=>(!am||e.am===am)&&(!st||e.stage===st)&&!(e.end&&e.end<todayISO));}
+
+/* ===== Header / outlook ===== */
+function renderAsof(){
+  let syncTxt="";
+  if(LASTSYNC){
+    const dt=new Date(LASTSYNC.ran_at);
+    const hrs=(Date.now()-dt)/36e5;
+    const cls=(LASTSYNC.status==='failed'||hrs>36)?'sync-warn':'sync-ok';
+    syncTxt=`<br><span class="${cls}">Data synced ${dt.toLocaleDateString('en',{month:'short',day:'numeric'})} ${dt.toLocaleTimeString('en',{hour:'numeric',minute:'2-digit'})} · ${LASTSYNC.status}</span>`;
+  } else syncTxt=`<br><span class="sync-warn">No sync recorded</span>`;
+  document.getElementById('asof').innerHTML='As of '+TODAY.toLocaleDateString('en',{month:'short',day:'numeric',year:'numeric'})+syncTxt;
+}
+function renderIssueBanner(){
+  const bad=DEALS.filter(d=>(d.data_issues||[]).length>0);
+  const el=document.getElementById('issuebanner');
+  if(!bad.length){el.innerHTML="";return;}
+  el.innerHTML=`<div class="banner warn"><span>⚠️</span><div><b>${bad.length} deal${bad.length>1?'s':''} with data gaps in HubSpot</b> — numbers shown for these are estimates. <span class="linky" onclick="flyIssues()">See what's missing</span></div></div>`;
+}
+function flyIssues(){
+  const bad=DEALS.filter(d=>(d.data_issues||[]).length>0);
+  const f=document.getElementById('flyout');
+  f.innerHTML=`<button class="x" onclick="closeFly()">×</button><div class="ftag">Data quality</div><h3>Fix these in HubSpot</h3><p class="hint" style="margin:6px 0 14px">The nightly sync picks up fixes automatically.</p>`+
+    bad.map(d=>`<div class="issue-item"><b>${d.client} — ${d.sow}</b>${(d.data_issues||[]).join(' · ')}</div>`).join('');
+  f.classList.add('open');document.getElementById('backdrop').classList.add('open');
+}
+
+/* ===== Views (timeline / people / pipeline / grid) ===== */
+function monthBands(){
+  let h="";let cur=new Date(START.getFullYear(),START.getMonth(),1);
+  while(cur<WEND){const next=new Date(cur.getFullYear(),cur.getMonth()+1,1);
+    const l=pctX(cur<START?START:cur);const r=pctX(next>WEND?WEND:next);
+    h+=`<div class="tl-mon" style="left:${l}%;width:${r-l}%">${MONTHS[cur.getMonth()]}${cur.getMonth()===0?" '"+String(cur.getFullYear()).slice(2):""}</div>`;
+    cur=next;}
+  return h;
+}
+function gridLines(){let h="";let cur=new Date(START.getFullYear(),START.getMonth(),1);while(cur<WEND){h+=`<div class="tl-grid" style="left:${pctX(cur)}%"></div>`;cur=new Date(cur.getFullYear(),cur.getMonth()+1,1);}return h;}
+function renderTimeline(){
+  const rows=filtered().slice().sort((a,b)=>STAGE_ORDER.indexOf(a.e.stage)-STAGE_ORDER.indexOf(b.e.stage)||new Date(a.e.start||'2099-01-01')-new Date(b.e.start||'2099-01-01'));
+  const today=pctX(TODAY);
+  let h=`<div class="panelcard"><div class="ph"><h2>Project timeline</h2><span class="sub">${rows.length} rows · bar = duration · color = stage · striped = dates missing</span></div><div class="tl">`;
+  h+=`<div class="tl-corner">Client / Advisor</div><div class="tl-months">${monthBands()}<div class="tl-today" style="left:${today}%"><span class="lab">today</span></div></div>`;
+  rows.forEach(({e,i})=>{
+    const issues=e.issues.length?` <span class="issue-flag" title="${e.issues.join(', ')}">⚠</span>`:"";
+    const advTxt=e.adv===UNASSIGNED?`<span class="adv-unassigned">${UNASSIGNED}</span>`:e.adv;
+    h+=`<div class="tl-label" onclick="flyProject(${i})"><span class="c">${e.client}${issues}</span><span class="m">${advTxt} · ${e.sow} · ${e.am}</span></div>`;
+    if(e.start&&e.end){
+      const l=pctX(e.start),r=pctX(e.end),w=Math.max(1.2,r-l);
+      const avg=WEEKS.reduce((s,wk)=>s+hoursFor(i,wk.iso),0)/Math.max(1,WEEKS.filter(wk=>hoursFor(i,wk.iso)>0).length)||0;
+      const label=avg?`${n2(avg)} hrs`:"";
+      h+=`<div class="tl-track">${gridLines()}<div class="tl-today" style="left:${today}%"></div><div class="tl-bar" style="left:${l}%;width:${w}%;background:${SC[e.stage]}" onclick="flyProject(${i})" title="${e.client} — ${e.sow}\n${e.adv} · ${STAGE_LABEL[e.stage]||e.stage}\n${e.start} → ${e.end}">${w>9?label:''}</div></div>`;
+    } else {
+      h+=`<div class="tl-track">${gridLines()}<div class="tl-today" style="left:${today}%"></div><div class="tl-bar nodates" style="left:1%;width:30%" onclick="flyProject(${i})" title="Dates missing in HubSpot">no dates — fix in HubSpot</div></div>`;
+    }
+  });
+  h+=`</div><div class="legend"><span><span class="sw" style="background:${SC['Closed Won']};border-color:${SC['Closed Won']}"></span>${STAGE_LABEL['Closed Won']}</span><span><span class="sw" style="background:${SC['Contract Review']};border-color:${SC['Contract Review']}"></span>Contract Review</span><span><span class="sw" style="background:${SC['Proposal']};border-color:${SC['Proposal']}"></span>Proposal</span><span class="hint">Click any project for details.</span></div></div>`;
+  document.getElementById('view').innerHTML=h;
+}
+
+function utilClass(v,cap){
+  if(v<=0)return'z';
+  if(!cap)return'a';
+  const ratio=v/cap;
+  if(ratio>1)return'r';
+  if(ratio>=0.7)return'a';
+  return'g';
+}
+const UFILL={g:'var(--g-fill)',a:'var(--a-fill)',r:'var(--r-fill)',z:'var(--z-fill)'},UBD={g:'var(--g-bd)',a:'var(--a-bd)',r:'var(--r-bd)',z:'var(--z-bd)'};
+function loadCells(load,cap){
+  return WEEKS.map((w,k)=>{
+    const l=pctX(w.ws),r=pctX(w.we),wd=Math.max(0.3,r-l),v=load[k];
+    const cls=utilClass(v,cap);
+    const txt=v>0?n2(v):'';
+    return `<div style="position:absolute;top:3px;bottom:3px;left:${l}%;width:${wd}%;background:${UFILL[cls]};box-shadow:inset 0 0 0 1px ${UBD[cls]};border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:10.5px;font-weight:700;color:#3a444c;overflow:hidden;white-space:nowrap" title="${w.md}–${w.mdEnd}: ${v.toFixed(1)} hrs${cap?` (capacity ${cap} hrs/wk)`:''}">${txt}</div>`;
+  }).join('');
+}
+function renderPeople(){
+  const rows=filtered().filter(({e})=>e.adv!==UNASSIGNED&&e.advId);
+  const advIds=[...new Set(rows.map(({e})=>e.advId))].sort((a,b)=>CAPMAP[a].name.localeCompare(CAPMAP[b].name));
+  const loads=Object.fromEntries(advIds.map(id=>[id,WEEKS.map(w=>{let v=0;rows.forEach(({e,i})=>{if(e.advId===id)v+=hoursFor(i,w.iso);});return v;})]));
+  const today=pctX(TODAY);
+  let h=`<div class="panelcard"><div class="ph"><h2>Advisor load</h2><span class="sub">Hours committed per week · color = utilization vs. their weekly capacity</span></div><div class="tl">`;
+  h+=`<div class="tl-corner">Advisor</div><div class="tl-months">${monthBands()}<div class="tl-today" style="left:${today}%"><span class="lab">today</span></div></div>`;
+  advIds.forEach(id=>{
+    const name=CAPMAP[id].name, emp=CAPMAP[id].emp, cap=CAPMAP[id].cap;
+    const load=loads[id];
+    const now=load[0]||0;
+    const advRows=rows.filter(({e})=>e.advId===id);
+    let free="Booked through "+WEEKS[WEEKS.length-1].mon,fcls="book";
+    if(now<=0){free="Available now";fcls="now";}
+    else{const idx=load.findIndex((v,k)=>k>0&&v<=0);if(idx>0){free="Opens "+WEEKS[idx].mon+" "+WEEKS[idx].md;fcls="soon";}}
+    h+=`<div class="tl-label" onclick="flyAdvisor('${id}')"><span class="c">${name}${emp?`<span class="cap-tag" style="color:${emp==='W-2'?'#1f5e9e':'#5a3fa0'}">${emp}</span>`:''}</span><span class="m">${now.toFixed(0)}${cap?'/'+cap:''} hrs now · ${advRows.length} active · <span class="freecell ${fcls}" style="display:inline">${free}</span></span></div>`;
+    h+=`<div class="tl-track">${gridLines()}<div class="tl-today" style="left:${today}%"></div>${loadCells(load,cap)}</div>`;
+  });
+  const totLoad=WEEKS.map(w=>{let v=0;filtered().forEach(({e,i})=>v+=hoursFor(i,w.iso));return v;});
+  const totalCap=advIds.reduce((s,id)=>s+(CAPMAP[id].cap||0),0);
+  h+=`<div class="tl-label" style="font-weight:800"><span class="c">All advisors</span><span class="m">${totLoad[0].toFixed(0)}${totalCap?'/'+totalCap:''} hrs now · ${advIds.length} active advisors</span></div>`;
+  h+=`<div class="tl-track" style="background:var(--smoke)">${gridLines()}<div class="tl-today" style="left:${today}%"></div>${loadCells(totLoad,totalCap)}</div>`;
+  h+=`</div><div class="legend"><span><span class="sw" style="background:var(--g-fill);border-color:var(--g-bd)"></span>Under 70% capacity</span><span><span class="sw" style="background:var(--a-fill);border-color:var(--a-bd)"></span>70–100%</span><span><span class="sw" style="background:var(--r-fill);border-color:var(--r-bd)"></span>Over capacity</span><span><span class="sw" style="background:var(--z-fill);border-color:var(--z-bd)"></span>No hours that week</span><span class="hint">Click any advisor for their active engagements.</span></div></div>`;
+  document.getElementById('view').innerHTML=h;
+}
+function flyAdvisor(id){
+  const rows=filtered().filter(({e})=>e.advId===id);
+  const f=document.getElementById('flyout');
+  const name=CAPMAP[id].name, emp=CAPMAP[id].emp;
+  f.innerHTML=`<button class="x" onclick="closeFly()">×</button><div class="ftag">${emp||'Advisor'}</div><h3>${name}</h3>`+
+    (rows.length?rows.map(({e,i})=>{
+      const wkv=WEEKS.filter(w=>hoursFor(i,w.iso)>0);
+      const avg=wkv.length?n2(wkv.reduce((s,w)=>s+hoursFor(i,w.iso),0)/wkv.length):0;
+      return `<div class="frow"><span>${e.client} — ${e.sow}</span><b>${avg?avg+' hrs/wk avg':'—'}</b></div>`;
+    }).join(''):`<p class="hint">No active engagements in the current filter/horizon.</p>`)+
+    `<p class="hint" style="margin-top:14px">Click a project row in the Timeline view for full details on any one engagement.</p>`;
+  f.classList.add('open');document.getElementById('backdrop').classList.add('open');
+}
+
+let chart;
+const FTE_HOURS=40;
+function renderPipeline(){
+  document.getElementById('view').innerHTML=`<div class="panelcard"><div class="ph"><h2>Pipeline forecast</h2><span class="sub">FTE demand by deal stage (1 FTE = ${FTE_HOURS} hrs/wk) · purple stripe = unassigned demand · click a bar to drill in</span></div><div class="chartwrap"><canvas id="fc"></canvas></div><div class="drill" id="drill"></div></div>`;
+  const rows=filtered();const labels=WEEKS.map(w=>w.md);
+  const ds=STAGE_ORDER.map(st=>({label:STAGE_LABEL[st]||st,backgroundColor:SC[st],stack:'s',data:WEEKS.map(w=>{let t=0;rows.forEach(({e,i})=>{if(e.stage===st&&e.adv!==UNASSIGNED)t+=hoursFor(i,w.iso);});return +(t/FTE_HOURS).toFixed(2);})}));
+  ds.push({label:'Unassigned (any stage)',backgroundColor:'#7C5CCB',stack:'s',data:WEEKS.map(w=>{let t=0;rows.forEach(({e,i})=>{if(e.adv===UNASSIGNED)t+=hoursFor(i,w.iso);});return +(t/FTE_HOURS).toFixed(2);})});
+  if(chart)chart.destroy();
+  chart=new Chart(document.getElementById('fc'),{type:'bar',data:{labels,datasets:ds},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},
+    plugins:{legend:{labels:{usePointStyle:true,boxWidth:8}},tooltip:{callbacks:{footer:items=>{const s=items.reduce((s,it)=>s+it.parsed.y,0);return 'Total: '+s.toFixed(2)+' FTE';}}}},
+    scales:{x:{stacked:true,grid:{display:false}},y:{stacked:true,beginAtZero:true,title:{display:true,text:'FTE'}}},
+    onClick:(ev,els)=>{if(els.length)drillWeek(els[0].index);}}});
+}
+function drillWeek(idx){const w=WEEKS[idx],rows=filtered();const d=document.getElementById('drill');
+  const act=rows.map(({e,i})=>({e,v:hoursFor(i,w.iso)})).filter(x=>x.v>0);const tot=act.reduce((s,x)=>s+x.v,0);
+  let h=`<button class="close" onclick="document.getElementById('drill').style.display='none'">×</button><h3>Week of ${w.md} – ${w.mdEnd} · ${(tot/FTE_HOURS).toFixed(2)} FTE total</h3>`;
+  STAGE_ORDER.forEach(st=>{const g=act.filter(x=>x.e.stage===st);if(!g.length)return;h+=`<div class="stagehdr"><span class="pill ${PILL[st]}">${STAGE_LABEL[st]||st}</span></div><div class="drow head"><span>Client</span><span>SOW</span><span>Advisor</span><span>AM</span><span>FTE</span></div>`;g.forEach(x=>h+=`<div class="drow"><span>${x.e.client}</span><span>${x.e.sow}</span><span>${x.e.adv===UNASSIGNED?'<span class="adv-unassigned">Unassigned</span>':x.e.adv}</span><span>${x.e.am}</span><span>${(x.v/FTE_HOURS).toFixed(2)}</span></div>`);});
+  d.innerHTML=h;d.style.display='block';
+}
+
+function renderGrid(){
+  const rows=filtered();
+  let h=`<div class="panelcard"><div class="ph"><h2>Allocation grid</h2><span class="sub">${EDIT?'Edit mode — type to override (saved to the shared database, protected from sync)':'weekly hours per engagement per advisor'}</span></div><div class="scrollx"><table>`;
+  h+="<thead><tr><th class='fix c-client'>Client</th><th class='fix c-sow'>SOW</th><th class='fix c-adv'>Advisor</th><th class='fix c-am'>AM</th><th class='fix c-stage'>Stage</th>"+WEEKS.map(w=>`<th class="${w.firstOfMonth?'monsep':''}">${w.md}</th>`).join('')+"</tr><tr><th class='fix c-client'></th><th class='fix c-sow'></th><th class='fix c-adv'></th><th class='fix c-am'></th><th class='fix c-stage'></th>"+WEEKS.map(w=>`<th class="mon ${w.firstOfMonth?'monsep':''}">${w.firstOfMonth?w.mon:''}</th>`).join('')+"</tr></thead><tbody>";
+  rows.forEach(({e,i})=>{
+    const advCell=e.adv===UNASSIGNED?`<span class="adv-unassigned">${UNASSIGNED}</span>`:e.adv;
+    h+=`<tr><td class="fix c-client">${e.client}</td><td class="fix c-sow">${e.sow}</td><td class="fix c-adv">${advCell}</td><td class="fix c-am">${e.am}</td><td class="fix c-stage"><span class="pill ${PILL[e.stage]||''}">${STAGE_LABEL[e.stage]||e.stage}</span></td>`;
+    WEEKS.forEach(w=>{const a=ALLOC[i+"|"+w.iso];const v=a?a.hours:0;
+      const cc=v<=0?"z":(e.adv===UNASSIGNED?"u":PILL[e.stage]);
+      const o=a&&a.ov?a:null;
+      const inner=(EDIT&&a)?`<input type="number" min="0" max="80" step="1" value="${v>0?n2(v):''}" data-i="${i}" data-iso="${w.iso}">`+(o?`<span class="dot" title="${o.note||'manual override — click for note'}" data-note="${i}|${w.iso}"></span>`:''):`${v?n2(v):''}${o?`<span class="dot" title="${o.note||'manual override'}"></span>`:''}`;
+      h+=`<td class="wk ${w.firstOfMonth?'monsep':''}" style="background:${FILL[cc]};box-shadow:inset 0 0 0 ${v>0?'1px':'0'} ${BD[cc]}">${inner}</td>`;});
+    h+="</tr>";
+  });
+  h+=`<tr class="totrow"><td class="fix c-client" style="background:var(--smoke)">Total hours</td><td class="fix c-sow" style="background:var(--smoke)"></td><td class="fix c-adv" style="background:var(--smoke)"></td><td class="fix c-am" style="background:var(--smoke)"></td><td class="fix c-stage" style="background:var(--smoke)"></td>`+WEEKS.map(w=>{let t=0;rows.forEach(({e,i})=>t+=hoursFor(i,w.iso));return `<td class="wk ${w.firstOfMonth?'monsep':''}">${t?t.toFixed(1):''}</td>`;}).join('')+`</tr></tbody></table></div>`;
+  h+=`<div class="legend"><span><span class="sw" style="background:${FILL.won};border-color:${BD.won}"></span>${STAGE_LABEL['Closed Won']}</span><span><span class="sw" style="background:${FILL.cr};border-color:${BD.cr}"></span>Contract Review</span><span><span class="sw" style="background:${FILL.prop};border-color:${BD.prop}"></span>Proposal</span><span><span class="sw" style="background:${FILL.u};border-color:${BD.u}"></span>Unassigned demand</span><span class="hint">Edits save to the shared database — everyone sees them.</span></div></div>`;
+  document.getElementById('view').innerHTML=h;
+  if(EDIT){document.querySelectorAll('input[type=number]').forEach(inp=>inp.addEventListener('change',onEdit));document.querySelectorAll('.dot[data-note]').forEach(d=>d.addEventListener('click',onNote));}
+}
+async function onEdit(ev){
+  const inp=ev.target,i=+inp.dataset.i,iso=inp.dataset.iso,k=i+"|"+iso,a=ALLOC[k];
+  if(!a)return;
+  const raw=inp.value.trim();
+  const n=raw===""?0:Math.max(0,Math.min(80,parseFloat(raw)||0));
+  try{
+    const {data:{session}}=await sb.auth.getSession();
+    const who=session?.user?.user_metadata?.user_name||session?.user?.email||"dashboard";
+    await sbPatch(`rt_allocations?id=eq.${a.id}`,{hours:n,is_override:true,updated_by:who,updated_at:new Date().toISOString()});
+    a.hours=n;a.ov=true;tick("Saved ✓");
+  }catch(err){tick("Save failed — check connection");console.error(err);}
+  renderGrid();
+}
+async function onNote(ev){
+  ev.stopPropagation();const k=ev.target.dataset.note,a=ALLOC[k];if(!a)return;
+  const note=prompt("Note (e.g. 'Ramping down', 'Maternity cover'):",a.note||"");if(note===null)return;
+  try{await sbPatch(`rt_allocations?id=eq.${a.id}`,{note});a.note=note;tick("Note saved ✓");}catch(err){tick("Save failed");console.error(err);}
+  renderGrid();
+}
+function tick(msg){const t=document.getElementById('savedtick');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),1600);}
+
+function flyProject(i){const e=ROWS[i];const f=document.getElementById('flyout');
+  const wkv=WEEKS.filter(w=>hoursFor(i,w.iso)>0);
+  const issues=e.issues.length?`<div style="margin-top:14px">${e.issues.map(x=>`<div class="issue-item">${x}</div>`).join('')}</div>`:"";
+  const statusLabel={on_track:"On Track",delayed:"Delayed",blocked:"Blocked",on_hold:"On-Hold",at_risk:"At-Risk"};
+  f.innerHTML=`<button class="x" onclick="closeFly()">×</button><div class="ftag">${STAGE_LABEL[e.stage]||e.stage}</div><h3>${e.client}</h3><div style="color:var(--muted);margin-bottom:12px">${e.sow}</div>`+
+   (e.status?`<div class="frow"><span>Delivery status</span><b>${statusLabel[e.status]||e.status}</b></div>`:'')+
+   `<div class="frow"><span>Advisor</span><b>${e.adv===UNASSIGNED?'<span class="adv-unassigned">Unassigned</span>':e.adv}</b></div><div class="frow"><span>Account manager</span><b>${e.am}</b></div>`+
+   `<div class="frow"><span>Start</span><b>${e.start||'—'}</b></div><div class="frow"><span>End</span><b>${e.end||'—'}</b></div>`+
+   (e.rate?`<div class="frow"><span>Bill rate</span><b>$${(+e.rate).toFixed(0)}/hr</b></div>`:'')+
+   `<div class="frow"><span>Active weeks (in view)</span><b>${wkv.length}</b></div>`+issues+
+   `<p class="hint" style="margin-top:14px">Weekly numbers are edited in the Grid view. Project facts (dates, advisor, stage) are fixed in HubSpot and land here on the nightly sync.</p>`;
+  f.classList.add('open');document.getElementById('backdrop').classList.add('open');
+}
+function closeFly(){document.getElementById('flyout').classList.remove('open');document.getElementById('backdrop').classList.remove('open');}
+
+/* ===== Wiring ===== */
+const fAM=document.getElementById('fAM'),fStage=document.getElementById('fStage');
+function render(){renderAsof();renderIssueBanner();
+  if(VIEW==="timeline")renderTimeline();else if(VIEW==="people")renderPeople();else if(VIEW==="pipeline")renderPipeline();else renderGrid();
+  document.getElementById('editBtn').style.display=(VIEW==="grid"&&ROLE==="admin")?'inline-flex':'none';}
+document.getElementById('views').addEventListener('click',e=>{if(e.target.dataset.v){[...e.currentTarget.children].forEach(b=>b.classList.remove('active'));e.target.classList.add('active');VIEW=e.target.dataset.v;render();}});
+document.getElementById('horizon').addEventListener('click',e=>{if(e.target.dataset.h){[...e.currentTarget.children].forEach(b=>b.classList.remove('active'));e.target.classList.add('active');HORIZON=e.target.dataset.h;localStorage.setItem("wrt_h",HORIZON);buildWeeks(HORIZON);render();}});
+document.getElementById('role').addEventListener('click',e=>{if(e.target.dataset.r){[...e.currentTarget.children].forEach(b=>b.classList.remove('active'));e.target.classList.add('active');ROLE=e.target.dataset.r;localStorage.setItem("wrt_role",ROLE);if(ROLE==="viewer"&&EDIT){EDIT=false;document.body.classList.remove('editing');document.getElementById('editBtn').classList.remove('on');document.getElementById('editBtn').textContent='✎ Edit';}render();}});
+fAM.addEventListener('change',render);fStage.addEventListener('change',render);
+document.getElementById('editBtn').addEventListener('click',e=>{EDIT=!EDIT;document.body.classList.toggle('editing',EDIT);e.target.classList.toggle('on',EDIT);e.target.textContent=EDIT?'✓ Done':'✎ Edit';renderGrid();});
+
+async function init(){
+  buildWeeks(HORIZON);
+  document.querySelectorAll('#horizon button').forEach(b=>b.classList.toggle('active',b.dataset.h===HORIZON));
+  document.querySelectorAll('#role button').forEach(b=>b.classList.toggle('active',b.dataset.r===ROLE));
+  try{
+    await loadData();
+    fAM.innerHTML='<option value="">All AMs</option>'+[...new Set(ROWS.map(e=>e.am))].sort().map(a=>`<option>${a}</option>`).join('');
+    render();
+  }catch(err){
+    document.getElementById('view').innerHTML=`<div class="panelcard"><div class="loading">Couldn't load live data.<br><br><b>${String(err.message||err).slice(0,300)}</b><br><br><span class="hint">Check your internet connection and reload. If it persists, the database may be paused or unreachable.</span></div></div>`;
+    console.error(err);
+  }
+}
+
+/* ===== Auth gate ===== */
+function showGate(msg,denied){
+  document.getElementById('authgate').style.display='flex';
+  document.getElementById('wrap').style.display='none';
+  const m=document.getElementById('authmsg');
+  m.textContent=msg||'';
+  m.classList.toggle('denied',!!denied);
+  document.getElementById('ghSignIn').disabled=false;
+}
+async function showApp(session){
+  document.getElementById('ghSignIn').disabled=true;
+  document.getElementById('authmsg').textContent='Checking access…';
+  let allowed=false;
+  try{allowed=await amIAllowed();}catch(err){console.error(err);}
+  if(!allowed){
+    const who=session.user.user_metadata?.user_name||session.user.email||'this account';
+    showGate(`Signed in as ${who}, but you don't have access to the tracker yet. Ask Rob to add your GitHub username.`,true);
+    return;
+  }
+  document.getElementById('authgate').style.display='none';
+  document.getElementById('wrap').style.display='';
+  const who=session.user.user_metadata?.user_name||session.user.email||'signed in';
+  document.getElementById('whoami').innerHTML=`${who} · <a id="signOutLink">Sign out</a>`;
+  document.getElementById('signOutLink').addEventListener('click',async()=>{await sb.auth.signOut();location.reload();});
+  init();
+}
+document.getElementById('ghSignIn').addEventListener('click',async()=>{
+  document.getElementById('ghSignIn').disabled=true;
+  document.getElementById('authmsg').textContent='Redirecting to GitHub…';
+  const {error}=await sb.auth.signInWithOAuth({provider:'github',options:{redirectTo:location.href.split('#')[0].split('?')[0]}});
+  if(error){showGate('Sign-in failed: '+error.message,true);}
+});
+sb.auth.onAuthStateChange((event,session)=>{
+  if(event==='SIGNED_IN'&&session)showApp(session);
+  if(event==='SIGNED_OUT')showGate();
+});
+(async function boot(){
+  const {data:{session}}=await sb.auth.getSession();
+  if(session)await showApp(session);else showGate();
+})();
+</script>
+</body>
+</html>
