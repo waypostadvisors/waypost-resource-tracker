@@ -167,6 +167,7 @@
     </div>
     <h1>Resource Tracker</h1>
     <span class="asof" id="asof"></span>
+    <button class="btn" id="syncBtn" title="Pull the latest data from HubSpot now">↻ Sync now</button>
     <span id="whoami"></span>
   </header>
 
@@ -193,7 +194,7 @@
 
   <div id="view"><div class="loading">Loading live data…</div></div>
 
-  <div class="foot">Waypost Advisors · Resource Tracker · Live data synced daily from HubSpot</div>
+  <div class="foot">Waypost Advisors · Resource Tracker · Live data from HubSpot — use "Sync now" above for the latest</div>
 </div>
 
 <div class="backdrop" id="backdrop" onclick="closeFly()"></div>
@@ -226,6 +227,13 @@ async function amIAllowed(){
   const r=await fetch(`${SB_URL}/rest/v1/rpc/am_i_allowed`,{method:"POST",headers:{apikey:SB_KEY,Authorization:`Bearer ${token}`,"Content-Type":"application/json"}});
   if(!r.ok)return false;
   return await r.json();
+}
+async function runHubspotSync(){
+  const token=await authHeader();
+  const r=await fetch(`${SB_URL}/rest/v1/rpc/run_hubspot_sync`,{method:"POST",headers:{apikey:SB_KEY,Authorization:`Bearer ${token}`,"Content-Type":"application/json"}});
+  const body=await r.json().catch(()=>null);
+  if(!r.ok)throw new Error((body&&(body.message||body.hint))||`Sync failed (${r.status})`);
+  return body;
 }
 
 /* ===== State ===== */
@@ -284,7 +292,7 @@ async function loadData(){
       ROWS.push({client:d.client,sow:d.sow,adv:advName,advId:al.advisor_id,am:(d.deal_owner||"—").split(" ")[0],stage:d.stage,
         start:da.start_date||(proj&&proj.start_date)||d.start_date,end:da.end_date||(proj&&proj.end_date)||d.end_date,
         rate:da.bill_rate?+da.bill_rate:null,dealId:d.id,issues:[...(d.data_issues||[]),...(proj&&proj.data_issues||[])],
-        status:proj?proj.status:null});
+        status:proj?proj.status:null,est:d.estimated_weekly_hours!=null?+d.estimated_weekly_hours:null});
     }
     ALLOC[rowKey[k]+"|"+al.week_start]={hours:+al.hours,ov:al.is_override,note:al.note,id:al.id};
   });
@@ -296,7 +304,8 @@ async function loadData(){
       ROWS.push({client:d.client,sow:d.sow,adv:UNASSIGNED,advId:null,am:(d.deal_owner||"—").split(" ")[0],stage:d.stage,
         start:(proj&&proj.start_date)||d.start_date,end:(proj&&proj.end_date)||d.end_date,dealId:d.id,
         issues:[...(d.data_issues||[]),...(proj&&proj.data_issues||[])],
-        status:proj?proj.status:null,nodates:!((proj&&proj.start_date)||d.start_date)});
+        status:proj?proj.status:null,nodates:!((proj&&proj.start_date)||d.start_date),
+        est:d.estimated_weekly_hours!=null?+d.estimated_weekly_hours:null});
     }
   });
 }
@@ -325,7 +334,7 @@ function renderIssueBanner(){
 function flyIssues(){
   const bad=DEALS.filter(d=>(d.data_issues||[]).length>0);
   const f=document.getElementById('flyout');
-  f.innerHTML=`<button class="x" onclick="closeFly()">×</button><div class="ftag">Data quality</div><h3>Fix these in HubSpot</h3><p class="hint" style="margin:6px 0 14px">The nightly sync picks up fixes automatically.</p>`+
+  f.innerHTML=`<button class="x" onclick="closeFly()">×</button><div class="ftag">Data quality</div><h3>Fix these in HubSpot</h3><p class="hint" style="margin:6px 0 14px">Hit "Sync now" (top right) after fixing to pick up the change.</p>`+
     bad.map(d=>`<div class="issue-item"><b>${d.client} — ${d.sow}</b>${(d.data_issues||[]).join(' · ')}</div>`).join('');
   f.classList.add('open');document.getElementById('backdrop').classList.add('open');
 }
@@ -348,12 +357,14 @@ function renderTimeline(){
   rows.forEach(({e,i})=>{
     const issues=e.issues.length?` <span class="issue-flag" title="${e.issues.join(', ')}">⚠</span>`:"";
     const advTxt=e.adv===UNASSIGNED?`<span class="adv-unassigned">${UNASSIGNED}</span>`:e.adv;
-    h+=`<div class="tl-label" onclick="flyProject(${i})"><span class="c">${e.client}${issues}</span><span class="m">${advTxt} · ${e.sow} · ${e.am}</span></div>`;
+    const estTxt=e.est?` · Est ${n2(e.est)} hrs/wk`:"";
+    h+=`<div class="tl-label" onclick="flyProject(${i})"><span class="c">${e.client}${issues}</span><span class="m">${advTxt} · ${e.sow} · ${e.am}${estTxt}</span></div>`;
     if(e.start&&e.end){
       const l=pctX(e.start),r=pctX(e.end),w=Math.max(1.2,r-l);
       const avg=WEEKS.reduce((s,wk)=>s+hoursFor(i,wk.iso),0)/Math.max(1,WEEKS.filter(wk=>hoursFor(i,wk.iso)>0).length)||0;
-      const label=avg?`${n2(avg)} hrs`:"";
-      h+=`<div class="tl-track">${gridLines()}<div class="tl-today" style="left:${today}%"></div><div class="tl-bar" style="left:${l}%;width:${w}%;background:${SC[e.stage]}" onclick="flyProject(${i})" title="${e.client} — ${e.sow}\n${e.adv} · ${STAGE_LABEL[e.stage]||e.stage}\n${e.start} → ${e.end}">${w>9?label:''}</div></div>`;
+      const label=avg?`${n2(avg)} hrs`:(e.est?`~${n2(e.est)} hrs (est.)`:"");
+      const estLine=e.est?`\nEst. ${n2(e.est)} hrs/wk`:"";
+      h+=`<div class="tl-track">${gridLines()}<div class="tl-today" style="left:${today}%"></div><div class="tl-bar" style="left:${l}%;width:${w}%;background:${SC[e.stage]}" onclick="flyProject(${i})" title="${e.client} — ${e.sow}\n${e.adv} · ${STAGE_LABEL[e.stage]||e.stage}\n${e.start} → ${e.end}${estLine}">${w>9?label:''}</div></div>`;
     } else {
       h+=`<div class="tl-track">${gridLines()}<div class="tl-today" style="left:${today}%"></div><div class="tl-bar nodates" style="left:1%;width:30%" onclick="flyProject(${i})" title="Dates missing in HubSpot">no dates — fix in HubSpot</div></div>`;
     }
@@ -486,9 +497,10 @@ function flyProject(i){const e=ROWS[i];const f=document.getElementById('flyout')
    (e.status?`<div class="frow"><span>Delivery status</span><b>${statusLabel[e.status]||e.status}</b></div>`:'')+
    `<div class="frow"><span>Advisor</span><b>${e.adv===UNASSIGNED?'<span class="adv-unassigned">Unassigned</span>':e.adv}</b></div><div class="frow"><span>Account manager</span><b>${e.am}</b></div>`+
    `<div class="frow"><span>Start</span><b>${e.start||'—'}</b></div><div class="frow"><span>End</span><b>${e.end||'—'}</b></div>`+
+   (e.est?`<div class="frow"><span>Estimated hours (HubSpot)</span><b>${n2(e.est)} hrs/wk</b></div>`:'')+
    (e.rate?`<div class="frow"><span>Bill rate</span><b>$${(+e.rate).toFixed(0)}/hr</b></div>`:'')+
    `<div class="frow"><span>Active weeks (in view)</span><b>${wkv.length}</b></div>`+issues+
-   `<p class="hint" style="margin-top:14px">Weekly numbers are edited in the Grid view. Project facts (dates, advisor, stage) are fixed in HubSpot and land here on the nightly sync.</p>`;
+   `<p class="hint" style="margin-top:14px">Weekly numbers are edited in the Grid view. Project facts (dates, advisor, stage) are fixed in HubSpot — hit "Sync now" to pull the latest.</p>`;
   f.classList.add('open');document.getElementById('backdrop').classList.add('open');
 }
 function closeFly(){document.getElementById('flyout').classList.remove('open');document.getElementById('backdrop').classList.remove('open');}
@@ -502,6 +514,22 @@ document.getElementById('views').addEventListener('click',e=>{if(e.target.datase
 document.getElementById('horizon').addEventListener('click',e=>{if(e.target.dataset.h){[...e.currentTarget.children].forEach(b=>b.classList.remove('active'));e.target.classList.add('active');HORIZON=e.target.dataset.h;localStorage.setItem("wrt_h",HORIZON);buildWeeks(HORIZON);render();}});
 document.getElementById('role').addEventListener('click',e=>{if(e.target.dataset.r){[...e.currentTarget.children].forEach(b=>b.classList.remove('active'));e.target.classList.add('active');ROLE=e.target.dataset.r;localStorage.setItem("wrt_role",ROLE);if(ROLE==="viewer"&&EDIT){EDIT=false;document.body.classList.remove('editing');document.getElementById('editBtn').classList.remove('on');document.getElementById('editBtn').textContent='✎ Edit';}render();}});
 fAM.addEventListener('change',render);fStage.addEventListener('change',render);
+document.getElementById('syncBtn').addEventListener('click',async e=>{
+  const btn=e.currentTarget;const orig=btn.textContent;
+  btn.disabled=true;btn.textContent='Syncing…';
+  try{
+    const res=await runHubspotSync();
+    await loadData();
+    fAM.innerHTML='<option value="">All AMs</option>'+[...new Set(ROWS.map(r=>r.am))].sort().map(a=>`<option>${a}</option>`).join('');
+    render();
+    tick(res&&res.message?res.message:'Synced ✓');
+  }catch(err){
+    tick('Sync failed — see console');
+    console.error(err);
+  }finally{
+    btn.disabled=false;btn.textContent=orig;
+  }
+});
 document.getElementById('editBtn').addEventListener('click',e=>{EDIT=!EDIT;document.body.classList.toggle('editing',EDIT);e.target.classList.toggle('on',EDIT);e.target.textContent=EDIT?'✓ Done':'✎ Edit';renderGrid();});
 
 async function init(){
