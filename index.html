@@ -357,14 +357,15 @@ function renderTimeline(){
   rows.forEach(({e,i})=>{
     const issues=e.issues.length?` <span class="issue-flag" title="${e.issues.join(', ')}">⚠</span>`:"";
     const advTxt=e.adv===UNASSIGNED?`<span class="adv-unassigned">${UNASSIGNED}</span>`:e.adv;
-    const estTxt=e.est?` · Est ${n2(e.est)} hrs/wk`:"";
-    h+=`<div class="tl-label" onclick="flyProject(${i})"><span class="c">${e.client}${issues}</span><span class="m">${advTxt} · ${e.sow} · ${e.am}${estTxt}</span></div>`;
+    const avg=WEEKS.reduce((s,wk)=>s+hoursFor(i,wk.iso),0)/Math.max(1,WEEKS.filter(wk=>hoursFor(i,wk.iso)>0).length)||0;
+    const hrsLabel=avg?`${n2(avg)} hrs/wk`:(e.est?`~${n2(e.est)} hrs/wk (est.)`:"");
+    const hrsTxt=hrsLabel?` · ${hrsLabel}`:"";
+    h+=`<div class="tl-label" onclick="flyProject(${i})"><span class="c">${e.client}${issues}</span><span class="m">${advTxt} · ${e.sow} · ${e.am}${hrsTxt}</span></div>`;
     if(e.start&&e.end){
       const l=pctX(e.start),r=pctX(e.end),w=Math.max(1.2,r-l);
-      const avg=WEEKS.reduce((s,wk)=>s+hoursFor(i,wk.iso),0)/Math.max(1,WEEKS.filter(wk=>hoursFor(i,wk.iso)>0).length)||0;
-      const label=avg?`${n2(avg)} hrs`:(e.est?`~${n2(e.est)} hrs (est.)`:"");
-      const estLine=e.est?`\nEst. ${n2(e.est)} hrs/wk`:"";
-      h+=`<div class="tl-track">${gridLines()}<div class="tl-today" style="left:${today}%"></div><div class="tl-bar" style="left:${l}%;width:${w}%;background:${SC[e.stage]}" onclick="flyProject(${i})" title="${e.client} — ${e.sow}\n${e.adv} · ${STAGE_LABEL[e.stage]||e.stage}\n${e.start} → ${e.end}${estLine}">${w>9?label:''}</div></div>`;
+      const barLabel=avg?`${n2(avg)} hrs`:(e.est?`~${n2(e.est)} hrs (est.)`:"");
+      const estLine=hrsLabel?`\n${hrsLabel}`:"";
+      h+=`<div class="tl-track">${gridLines()}<div class="tl-today" style="left:${today}%"></div><div class="tl-bar" style="left:${l}%;width:${w}%;background:${SC[e.stage]}" onclick="flyProject(${i})" title="${e.client} — ${e.sow}\n${e.adv} · ${STAGE_LABEL[e.stage]||e.stage}\n${e.start} → ${e.end}${estLine}">${w>9?barLabel:''}</div></div>`;
     } else {
       h+=`<div class="tl-track">${gridLines()}<div class="tl-today" style="left:${today}%"></div><div class="tl-bar nodates" style="left:1%;width:30%" onclick="flyProject(${i})" title="Dates missing in HubSpot">no dates — fix in HubSpot</div></div>`;
     }
