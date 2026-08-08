@@ -365,7 +365,7 @@ function renderTimeline(){
       const l=pctX(e.start),r=pctX(e.end),w=Math.max(1.2,r-l);
       const barLabel=avg?`${n2(avg)} hrs`:(e.est?`~${n2(e.est)} hrs (est.)`:"");
       const estLine=hrsLabel?`\n${hrsLabel}`:"";
-      h+=`<div class="tl-track">${gridLines()}<div class="tl-today" style="left:${today}%"></div><div class="tl-bar" style="left:${l}%;width:${w}%;background:${SC[e.stage]}" onclick="flyProject(${i})" title="${e.client} — ${e.sow}\n${e.adv} · ${STAGE_LABEL[e.stage]||e.stage}\n${e.start} → ${e.end}${estLine}">${w>9?barLabel:''}</div></div>`;
+      h+=`<div class="tl-track">${gridLines()}<div class="tl-today" style="left:${today}%"></div><div class="tl-bar" style="left:${l}%;width:${w}%;background:${SC[e.stage]}" onclick="flyProject(${i})" title="${e.client} — ${e.sow}\n${e.adv} · ${STAGE_LABEL[e.stage]||e.stage}\n${e.start} → ${e.end}${estLine}">${barLabel}</div></div>`;
     } else {
       h+=`<div class="tl-track">${gridLines()}<div class="tl-today" style="left:${today}%"></div><div class="tl-bar nodates" style="left:1%;width:30%" onclick="flyProject(${i})" title="Dates missing in HubSpot">no dates — fix in HubSpot</div></div>`;
     }
